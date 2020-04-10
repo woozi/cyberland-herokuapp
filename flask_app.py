@@ -31,7 +31,7 @@ def route_board(name=None):
     a {
         color: lime!important;
     }
-    .active {
+    a:hover, a.active {
         color: black!important;
         background: lime!important;
     }
