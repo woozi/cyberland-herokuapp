@@ -58,10 +58,16 @@ def route_board(name=None):
         border: 1px solid black;
     }
     .post {
-        border: 1px solid lime;
+
+    }
+    .content {
         padding: 10px;
         margin-bottom: 10px;
-        display: inline-block;
+        border-left: 1px solid lime;
+    }
+    .replies {
+        padding-left: 10px;
+        border-left: 1px solid green;
     }
     </style>
     </head>
@@ -88,23 +94,40 @@ def route_board(name=None):
     <br>
     '''
 
-    r = requests.get(f'https://cyberland.club/{name}/?thread=&num=999999999999999')
-    posts = r.json()
+    def get_posts(thread_id="", recent_first=True):
+        print("get_posts", thread_id)
+        r = requests.get(f'https://cyberland.club/{name}/?thread={thread_id}&num=999999999999999')
+        posts = r.json()
+        posts = sorted(posts, key=lambda x: int(x['id']), reverse=recent_first)
+        return posts
+
+    posts = get_posts()
 
     def post_by_id(id):
+        print('post by id: ', id)
         for post in posts:
             if post['id'] == id:
                 return post
-
-    for post in posts:
+    
+    def process_post(post):
+        print('process_post', post)
+        nonlocal page
         page += '<div class="post">'
-        page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a><br>'
         page += '<div class="content">'
-        if post_by_id(post['replyTo']):
-            page += f'<a href="#p{post["replyTo"]}">&gt;&gt;{post["replyTo"]}</a><br>'
-        page += str(escape(post["content"]))
+        page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a><br>'
+        page += str(escape(post['content']))
         page += '</div>'
-        page += '</div><br>'
+        replies = get_posts(post['id'], recent_first=False)
+        page += '<div class="replies">'
+        for reply in replies:
+            if reply['id'] != post['id']:
+                process_post(reply)
+        page += '</div>'
+        page += '</div>'
+        
+    for post in posts:
+        process_post(post)
+
     page += r'''
     <script type="text/javascript">
     function quote(id) {
@@ -145,4 +168,4 @@ def route_post(name):
     return redirect(f'/{name}')
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)
