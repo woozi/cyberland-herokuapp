@@ -53,6 +53,12 @@ def sort_replies(posts):
 def sort_ops_by_bump(posts):
     return sorted(posts, key=lambda p: max_id(p), reverse=True)
 
+def sort_posts(posts):
+    for post in posts:
+        post['replies'] = sort_posts(post['replies'])
+    posts = sorted(posts, key=lambda x: max_id(x), reverse=True)
+    return posts
+
 def get_posts_for_board(board_name):
     posts = get_posts(board_name)
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
@@ -107,9 +113,10 @@ def get_posts_for_board_simple(board_name):
                 print(f'missing post {post["replyTo"]}')
     
     
-    posts = sort_ops_by_bump(posts)
-    sort_replies(posts)
-
+    #posts = sort_ops_by_bump(posts)
+    #sort_replies(posts)
+    posts = sort_posts(posts)
+    
     return posts
     
 
