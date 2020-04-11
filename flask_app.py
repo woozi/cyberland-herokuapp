@@ -68,9 +68,22 @@ app = Flask(__name__)
 def route_board(name=None):
     active_board = board_by_name(name)
 
-    page = '''
+    page = ''
+    page += '''
     <html>
     <head>
+    '''
+    if active_board:
+        page += f'<title>/{active_board.name}/ - {active_board.title} - cyberland</title>'
+    else:
+        page += f'<title>cyberland</title>'
+    page += '''
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="manifest" href="/static/site.webmanifest">
+    '''
+    page += '''
     <style>
     body {
         color: lime;
@@ -119,6 +132,8 @@ def route_board(name=None):
         border-left: 1px solid green;
     }
     </style>
+    '''
+    page += '''
     </head>
     <body>
     '''
@@ -191,7 +206,7 @@ def route_post(name):
         return redirect(f'/{name}')
     lines = content.split('\n', 1)
     m = re.match('>>(\d+)', lines[0])
-    reply_to = "0"
+    reply_to = '0'
     if m:
         reply_to = m.group(1)
         content = lines[1]
