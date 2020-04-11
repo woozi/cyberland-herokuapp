@@ -6,6 +6,11 @@ import concurrent.futures
 import threading
 import time
 
+class BackendError(Exception):
+    def __init__(self, response):
+        super().__init__()
+        self.response = response
+
 cache_lock = threading.Lock()
 
 CacheEntry = namedtuple('CacheEntry', ['posts', 'time'])
@@ -15,10 +20,15 @@ cache = {}
 def get_posts(board_name, thread_id="", recent_first=True):
     print("get_posts", thread_id)
     r = requests.get(f'https://cyberland.club/{board_name}/?thread={thread_id}&num=999999999999999')
-    print(r.url, r.text)
-    posts = r.json()
+    print(r.url)
+    try:
+        posts = r.json()
+    except:
+        raise BackendError(r)
+
     posts = sorted(posts, key=lambda x: int(x['id']), reverse=recent_first)
     return posts
+
 
 def get_posts_for_board(board_name):
     posts = get_posts(board_name)
@@ -31,7 +41,12 @@ def get_posts_for_board(board_name):
         while futures:
             completed, _ = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
             for future in completed:
-                replies = future.result()
+                try:
+                    replies = future.result()
+                except:
+                    print('cannot get replies for ', post)
+                    replies = []
+
                 post = futures[future]
                 post['replies'] = []
                 for reply in replies:
@@ -60,6 +75,10 @@ def board_by_name(name):
     for board in boards:
         if board.name == name:
             return board
+
+def make_urls_clickable(text):
+    text = re.sub('https?://\w+\.\w+(/\S+)?', '<a href="\0">\0</a>', text)
+    return text
 
 app = Flask(__name__)
 
@@ -93,7 +112,7 @@ def route_board(name=None):
     a {
         color: lime!important;
     }
-    a:hover, a.active {
+    .menu a:hover, .menu a.active {
         color: black!important;
         background: lime!important;
     }
@@ -143,7 +162,9 @@ def route_board(name=None):
             menu.append(f'<a class="active" href="/{board.name}">/{board.name}/ - {board.title}</a></b>')
         else:
             menu.append(f'<a href="/{board.name}">/{board.name}/ - {board.title}</a>')
+    page += '<div class="menu">'
     page += ' | '.join(menu)
+    page += '</div>'
 
     if not active_board:
         return page
@@ -158,8 +179,15 @@ def route_board(name=None):
     <br>
     '''
 
-
-    posts = get_posts_cacheable(name)
+    try:
+        posts = get_posts_cacheable(name)
+    except BackendError as error:
+        posts = []
+        page += f'<h2>shit\'s fucked, backend failed with status code {error.response.status_code}</h2>'
+        page += '<div style="border: 1px solid lime;">'
+        page += error.response.text
+        page += '</div>'
+        
     
     def render_post(post):
         nonlocal page
