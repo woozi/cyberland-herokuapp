@@ -2,6 +2,55 @@ import requests
 import re
 from flask import Flask, escape, request, redirect
 from collections import namedtuple
+import concurrent.futures
+import threading
+import time
+
+cache_lock = threading.Lock()
+
+CacheEntry = namedtuple('CacheEntry', ['posts', 'time'])
+
+cache = {}
+
+def get_posts(board_name, thread_id="", recent_first=True):
+    print("get_posts", thread_id)
+    r = requests.get(f'https://cyberland.club/{board_name}/?thread={thread_id}&num=999999999999999')
+    print(r.url, r.text)
+    posts = r.json()
+    posts = sorted(posts, key=lambda x: int(x['id']), reverse=recent_first)
+    return posts
+
+def get_posts_for_board(board_name):
+    posts = get_posts(board_name)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        futures = {}
+        for post in posts:
+            future = executor.submit(get_posts, board_name, thread_id=post['id'], recent_first=False)
+            futures[future] = post
+
+        while futures:
+            completed, _ = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in completed:
+                replies = future.result()
+                post = futures[future]
+                post['replies'] = []
+                for reply in replies:
+                    if post['id'] == reply['id']:
+                        continue
+                    post['replies'].append(reply)
+                    new_future = executor.submit(get_posts, board_name, thread_id=reply['id'], recent_first=False)
+                    futures[new_future] = reply
+                del futures[future]
+
+    return posts
+
+def get_posts_cacheable(board_name):
+    CACHE_STALE_SECS = 20
+    with cache_lock:
+        if not board_name in cache or cache[board_name].time - time.time() > CACHE_STALE_SECS:
+            posts = get_posts_for_board(board_name)
+            cache[board_name] = CacheEntry(posts=posts, time=time.time())
+        return cache[board_name].posts
 
 Board = namedtuple('Board', ['name', 'title'])
 
@@ -94,39 +143,25 @@ def route_board(name=None):
     <br>
     '''
 
-    def get_posts(thread_id="", recent_first=True):
-        print("get_posts", thread_id)
-        r = requests.get(f'https://cyberland.club/{name}/?thread={thread_id}&num=999999999999999')
-        posts = r.json()
-        posts = sorted(posts, key=lambda x: int(x['id']), reverse=recent_first)
-        return posts
 
-    posts = get_posts()
-
-    def post_by_id(id):
-        print('post by id: ', id)
-        for post in posts:
-            if post['id'] == id:
-                return post
+    posts = get_posts_cacheable(name)
     
-    def process_post(post):
-        print('process_post', post)
+    def render_post(post):
         nonlocal page
         page += '<div class="post">'
         page += '<div class="content">'
         page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a><br>'
         page += str(escape(post['content']))
         page += '</div>'
-        replies = get_posts(post['id'], recent_first=False)
         page += '<div class="replies">'
-        for reply in replies:
-            if reply['id'] != post['id']:
-                process_post(reply)
+        if 'replies' in post:
+            for reply in post['replies']:
+                render_post(reply)
         page += '</div>'
         page += '</div>'
         
     for post in posts:
-        process_post(post)
+        render_post(post)
 
     page += r'''
     <script type="text/javascript">
@@ -162,9 +197,8 @@ def route_post(name):
         content = lines[1]
     data = { 'content': content, 'replyTo': reply_to }
     r = requests.post(f'https://cyberland.club/{name}/', data=data)
-    print('posted')
-    print(data)
-    print(r.status_code, r.text)
+    with cache_lock:
+        del cache[name]
     return redirect(f'/{name}')
 
 if __name__ == '__main__':
