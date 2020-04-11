@@ -5,6 +5,7 @@ from collections import namedtuple
 import concurrent.futures
 import threading
 import time
+import pdb
 
 class BackendError(Exception):
     def __init__(self, response):
@@ -17,6 +18,8 @@ CacheEntry = namedtuple('CacheEntry', ['posts', 'time'])
 
 cache = {}
 
+
+
 def get_posts(board_name, thread_id="", recent_first=True):
     print("get_posts", thread_id)
     r = requests.get(f'https://cyberland.club/{board_name}/?thread={thread_id}&num=999999999999999')
@@ -26,7 +29,6 @@ def get_posts(board_name, thread_id="", recent_first=True):
     except:
         raise BackendError(r)
 
-    posts = sorted(posts, key=lambda x: int(x['id']), reverse=recent_first)
     return posts
 
 
@@ -56,6 +58,24 @@ def get_posts_for_board(board_name):
                     new_future = executor.submit(get_posts, board_name, thread_id=reply['id'], recent_first=False)
                     futures[new_future] = reply
                 del futures[future]
+
+    def max_id(post):
+        if post['replies']:
+            return max(
+                max_id(reply) for reply in post['replies']
+            )
+        return int(post['id'])
+
+    def sort_replies(posts):
+        for post in posts:
+            post['replies'] = sorted(post['replies'], key=lambda x: int(x['id']))
+            sort_replies(post['replies'])
+
+    def sort_ops_by_bump(posts):
+        return sorted(posts, key=lambda p: max_id(p), reverse=True)
+
+    posts = sort_ops_by_bump(posts)
+    sort_replies(posts)
 
     return posts
 
