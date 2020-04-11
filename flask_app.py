@@ -116,7 +116,7 @@ def get_posts_for_board_simple(board_name):
     #posts = sort_ops_by_bump(posts)
     #sort_replies(posts)
     posts = sort_posts(posts)
-    
+
     return posts
     
 
@@ -258,6 +258,7 @@ def route_board(name=None):
         page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a><br>'
         content = str(escape(post['content']))
         content = make_urls_clickable(content)
+        content = content.replace('\r\n', '\n').replace('\n', '<br>')
         page += content
         page += '</div>'
         page += '<div class="replies">'
