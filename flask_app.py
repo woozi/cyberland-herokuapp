@@ -19,8 +19,15 @@ CacheEntry = namedtuple('CacheEntry', ['posts', 'time'])
 cache = {}
 
 
+def get_all_posts(board_name, recent_first=True):
+    r = requests.get(f'https://cyberland.club/{board_name}/?num=999999999999999')
+    try:
+        posts = r.json()
+    except:
+        raise BackendError(r)
+    return posts
 
-def get_posts(board_name, thread_id="", recent_first=True):
+def get_posts(board_name, thread_id="0", recent_first=True):
     print("get_posts", thread_id)
     r = requests.get(f'https://cyberland.club/{board_name}/?thread={thread_id}&num=999999999999999')
     print(r.url)
@@ -31,6 +38,20 @@ def get_posts(board_name, thread_id="", recent_first=True):
 
     return posts
 
+def max_id(post):
+    if post['replies']:
+        return max(
+            max_id(reply) for reply in post['replies']
+        )
+    return int(post['id'])
+
+def sort_replies(posts):
+    for post in posts:
+        post['replies'] = sorted(post['replies'], key=lambda x: int(x['id']))
+        sort_replies(post['replies'])
+
+def sort_ops_by_bump(posts):
+    return sorted(posts, key=lambda p: max_id(p), reverse=True)
 
 def get_posts_for_board(board_name):
     posts = get_posts(board_name)
@@ -59,31 +80,45 @@ def get_posts_for_board(board_name):
                     futures[new_future] = reply
                 del futures[future]
 
-    def max_id(post):
-        if post['replies']:
-            return max(
-                max_id(reply) for reply in post['replies']
-            )
-        return int(post['id'])
 
-    def sort_replies(posts):
-        for post in posts:
-            post['replies'] = sorted(post['replies'], key=lambda x: int(x['id']))
-            sort_replies(post['replies'])
-
-    def sort_ops_by_bump(posts):
-        return sorted(posts, key=lambda p: max_id(p), reverse=True)
 
     posts = sort_ops_by_bump(posts)
     sort_replies(posts)
 
     return posts
 
+def get_posts_for_board_simple(board_name):
+    flat_posts = get_all_posts(board_name)
+    posts = []
+    posts_lookup = { }
+    for post in flat_posts:
+        post['id'] = int(post['id'])
+        post['replyTo'] = int(post['replyTo']) if post['replyTo'] else 0
+        post['replies'] = []
+        posts_lookup[post['id']] = post
+
+    for post in flat_posts:
+        if post['replyTo'] == 0:
+            posts.append(post)
+        else:
+            if post['replyTo'] in posts_lookup:
+                posts_lookup[post['replyTo']]['replies'].append(post)
+            else:
+                print(f'missing post {post["replyTo"]}')
+    
+    
+    posts = sort_ops_by_bump(posts)
+    sort_replies(posts)
+
+    return posts
+    
+
+
 def get_posts_cacheable(board_name):
-    CACHE_STALE_SECS = 20
+    CACHE_STALE_SECS = 10
     with cache_lock:
         if not board_name in cache or time.time() - cache[board_name].time > CACHE_STALE_SECS:
-            posts = get_posts_for_board(board_name)
+            posts = get_posts_for_board_simple(board_name)
             cache[board_name] = CacheEntry(posts=posts, time=time.time())
         return cache[board_name].posts
 
@@ -97,7 +132,7 @@ def board_by_name(name):
             return board
 
 def make_urls_clickable(text):
-    text = re.sub('https?://\w+\.\w+(/\S+)?', '<a href="\0">\0</a>', text)
+    text = re.sub(r'(https?://\w+\.\w+\S*)', r'<a href="\1" target="_blank">\1</a>', text)
     return text
 
 app = Flask(__name__)
@@ -214,7 +249,9 @@ def route_board(name=None):
         page += '<div class="post">'
         page += '<div class="content">'
         page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a><br>'
-        page += str(escape(post['content']))
+        content = str(escape(post['content']))
+        content = make_urls_clickable(content)
+        page += content
         page += '</div>'
         page += '<div class="replies">'
         if 'replies' in post:
