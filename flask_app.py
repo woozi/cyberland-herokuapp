@@ -202,9 +202,19 @@ def route_board(name=None):
                 render_post(reply)
         page += '</div>'
         page += '</div>'
-        
+    
+    prev_post = None
+    same_posts = 0
     for post in posts:
+        if prev_post and prev_post['content'] == post['content']:
+            same_posts += 1
+            continue
+        if same_posts > 1:
+            page += f'<div class="post" style="color:green">({same_posts}x repeating)</div>'
         render_post(post)
+        prev_post = post
+        same_posts = 0
+        
 
     page += r'''
     <script type="text/javascript">
