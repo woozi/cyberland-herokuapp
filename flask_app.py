@@ -62,7 +62,7 @@ def get_posts_for_board(board_name):
 def get_posts_cacheable(board_name):
     CACHE_STALE_SECS = 20
     with cache_lock:
-        if not board_name in cache or cache[board_name].time - time.time() > CACHE_STALE_SECS:
+        if not board_name in cache or time.time() - cache[board_name].time > CACHE_STALE_SECS:
             posts = get_posts_for_board(board_name)
             cache[board_name] = CacheEntry(posts=posts, time=time.time())
         return cache[board_name].posts
