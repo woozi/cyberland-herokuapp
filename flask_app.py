@@ -316,7 +316,8 @@ def route_post(name):
     data = { 'content': content, 'replyTo': reply_to }
     r = requests.post(f'https://cyberland2.club/{name}/', data=data)
     with cache_lock:
-        del cache[name]
+        if name in cache:
+            del cache[name]
     return redirect(f'/{name}')
 
 if __name__ == '__main__':
