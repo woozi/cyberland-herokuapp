@@ -20,7 +20,7 @@ cache = {}
 
 
 def get_all_posts(board_name, recent_first=True):
-    r = requests.get(f'https://cyberland.club/{board_name}/?num=999999999999999')
+    r = requests.get(f'https://cyberland2.club/{board_name}/?num=999999999999999')
     try:
         posts = r.json()
     except:
@@ -29,7 +29,7 @@ def get_all_posts(board_name, recent_first=True):
 
 def get_posts(board_name, thread_id="0", recent_first=True):
     print("get_posts", thread_id)
-    r = requests.get(f'https://cyberland.club/{board_name}/?thread={thread_id}&num=999999999999999')
+    r = requests.get(f'https://cyberland2.club/{board_name}/?thread={thread_id}&num=999999999999999')
     print(r.url)
     try:
         posts = r.json()
@@ -314,7 +314,7 @@ def route_post(name):
         reply_to = m.group(1)
         content = lines[1]
     data = { 'content': content, 'replyTo': reply_to }
-    r = requests.post(f'https://cyberland.club/{name}/', data=data)
+    r = requests.post(f'https://cyberland2.club/{name}/', data=data)
     with cache_lock:
         del cache[name]
     return redirect(f'/{name}')
