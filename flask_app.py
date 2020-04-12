@@ -249,7 +249,20 @@ def route_board(name=None):
         page += '<div style="border: 1px solid lime;">'
         page += error.response.text
         page += '</div>'
-        
+
+    def render_collapse(posts):
+        nonlocal page
+        prev_post = None
+        same_posts = 0
+        for post in posts:
+            if prev_post and prev_post['content'] == post['content']:
+                same_posts += 1
+                continue
+            if same_posts > 1:
+                page += f'<div class="post" style="color:green">({same_posts}x repeating)</div>'
+            render_post(post)
+            prev_post = post
+            same_posts = 0
     
     def render_post(post):
         nonlocal page
@@ -263,22 +276,13 @@ def route_board(name=None):
         page += '</div>'
         page += '<div class="replies">'
         if 'replies' in post:
-            for reply in post['replies']:
-                render_post(reply)
+            render_collapse(post['replies'])
         page += '</div>'
         page += '</div>'
     
-    prev_post = None
-    same_posts = 0
-    for post in posts:
-        if prev_post and prev_post['content'] == post['content']:
-            same_posts += 1
-            continue
-        if same_posts > 1:
-            page += f'<div class="post" style="color:green">({same_posts}x repeating)</div>'
-        render_post(post)
-        prev_post = post
-        same_posts = 0
+ 
+    
+    render_collapse(posts)
         
 
     page += r'''
