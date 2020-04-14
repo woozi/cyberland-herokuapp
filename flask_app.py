@@ -96,7 +96,7 @@ def get_posts_for_board(board_name):
 
 
 def convert_ansi_to_html(content):
-    new_content = ''
+    new_content = []
     i = 0
     closing_stack = []
     while i < len(content):
@@ -104,17 +104,17 @@ def convert_ansi_to_html(content):
             i += 2
             s = content[i:i + 20]
             if s.startswith('0m'):
-                new_content += ''.join(closing_stack)
+                new_content.append(''.join(closing_stack))
                 closing_stack = []
                 i += 2
                 continue
             m = re.match(r'(\d+);(\d+);(\d+);(\d+);(\d+)m', s)
             if m: # 24bit
                 if m.group(1) == '38' and m.group(2) == '2':
-                    new_content += f'<span style="color:rgb({m.group(3)},{m.group(4)},{m.group(5)}">'
+                    new_content.append(f'<span style="color:rgb({m.group(3)},{m.group(4)},{m.group(5)}">')
                     closing_stack.append('</span>')
                 elif m.group(1) == '48' and m.group(2) == '2':
-                    new_content += f'<span style="background:rgb({m.group(3)},{m.group(4)},{m.group(5)}">'
+                    new_content.append(f'<span style="background:rgb({m.group(3)},{m.group(4)},{m.group(5)}">')
                     closing_stack.append('</span>')
                 i += len(m.group(0))
             else:
@@ -123,21 +123,21 @@ def convert_ansi_to_html(content):
                     if m.group(1) == '38' and m.group(2) == '5':
                         color = ansi_8bit_colors.get(m.group(3))
                         if color:
-                            new_content += f'<span style="color:{color}">'
+                            new_content.append(f'<span style="color:{color}">')
                             closing_stack.append('</span>')
                             i += len(m.group(0))
                     elif m.group(1) == '48' and m.group(2) == '5':
                         color = ansi_8bit_colors.get(m.group(3))
                         if color:
-                            new_content += f'<span style="background:{color}">'
+                            new_content.append(f'<span style="background:{color}">')
                             closing_stack.append('</span>')
                             i += len(m.group(0))
 
         else:
-            new_content += content[i]
+            new_content.append(content[i])
             i += 1
-    new_content += ''.join(closing_stack)
-    return new_content
+    new_content.append(''.join(closing_stack))
+    return ''.join(new_content)
 
 
 def get_posts_for_board_simple(backend, board_name):
