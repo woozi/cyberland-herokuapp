@@ -318,7 +318,7 @@ def route_board(backend_name=None, name=None):
         nonlocal page
         page += '<div class="post">'
         page += '<div class="content">'
-        page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a><br>'
+        page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a> <i>{post["time"]}</i><br>'
         content = str(escape(post['content']))
         content = make_urls_clickable(content)
         content = content.replace('\r\n', '\n').replace('\n', '<br>')
