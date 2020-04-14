@@ -1,6 +1,6 @@
 import requests
 import re
-from flask import Flask, escape, request, redirect
+from flask import Flask, escape, request, redirect, get_flashed_messages, flash
 from collections import namedtuple
 import concurrent.futures
 import threading
@@ -19,8 +19,8 @@ CacheEntry = namedtuple('CacheEntry', ['posts', 'time'])
 cache = {}
 
 
-def get_all_posts(board_name, recent_first=True):
-    r = requests.get(f'https://cyberland2.club/{board_name}/?num=999999999999999')
+def get_all_posts(backend_url, board_name, recent_first=True):
+    r = requests.get(f'{backend_url}/{board_name}/?num=999999999999999')
     try:
         posts = r.json()
     except:
@@ -29,7 +29,7 @@ def get_all_posts(board_name, recent_first=True):
 
 def get_posts(board_name, thread_id="0", recent_first=True):
     print("get_posts", thread_id)
-    r = requests.get(f'https://cyberland2.club/{board_name}/?thread={thread_id}&num=999999999999999')
+    r = requests.get(f'{API_BACKEND}/{board_name}/?thread={thread_id}&num=999999999999999')
     print(r.url)
     try:
         posts = r.json()
@@ -93,8 +93,8 @@ def get_posts_for_board(board_name):
 
     return posts
 
-def get_posts_for_board_simple(board_name):
-    flat_posts = get_all_posts(board_name)
+def get_posts_for_board_simple(backend, board_name):
+    flat_posts = get_all_posts(backend.url, board_name)
     posts = []
     posts_lookup = { }
     for post in flat_posts:
@@ -117,37 +117,56 @@ def get_posts_for_board_simple(board_name):
     #sort_replies(posts)
     posts = sort_posts(posts)
 
+
     return posts
     
 
 
-def get_posts_cacheable(board_name):
+def get_posts_cacheable(backend, board_name):
     CACHE_STALE_SECS = 10
     with cache_lock:
-        if not board_name in cache or time.time() - cache[board_name].time > CACHE_STALE_SECS:
-            posts = get_posts_for_board_simple(board_name)
-            cache[board_name] = CacheEntry(posts=posts, time=time.time())
-        return cache[board_name].posts
+        key = backend.name + ':' + board_name
+        if not key in cache or time.time() - cache[key].time > CACHE_STALE_SECS:
+            posts = get_posts_for_board_simple(backend, board_name)
+            cache[key] = CacheEntry(posts=posts, time=time.time())
+        return cache[key].posts
 
 Board = namedtuple('Board', ['name', 'title'])
+Backend = namedtuple('Backend', ['name', 'url', 'title', 'boards'])
 
-boards = [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic')]
+backends = [
+    Backend('cl2', 'https://cyberland2.club', 'cyberland2.club', [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image')]),
+    Backend('lc', 'http://landcyber.herokuapp.com', 'landcyber.herokuapp.com', [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image')]),
+    Backend('cldig', 'https://cyberland.digital', 'cyberland.digital', [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image'), Board('c', 'client tests')]),
+]
 
-def board_by_name(name):
-    for board in boards:
+def board_by_name(backend, name):
+    if not backend:
+        return None
+    for board in backend.boards:
         if board.name == name:
             return board
+
+def backend_by_name(name):
+    for backend in backends:
+        if backend.name == name:
+            return backend
 
 def make_urls_clickable(text):
     text = re.sub(r'(https?://\w+\.\w+\S*)', r'<a href="\1" target="_blank">\1</a>', text)
     return text
 
 app = Flask(__name__)
+app.secret_key = b'_5#y2L"Ffghgfhgf4Q8z\n\xec]/'
 
 @app.route('/')
-@app.route('/<name>')
-def route_board(name=None):
-    active_board = board_by_name(name)
+@app.route('/<backend_name>')
+@app.route('/<backend_name>/')
+@app.route('/<backend_name>/<name>')
+@app.route('/<backend_name>/<name>/')
+def route_board(backend_name=None, name=None):
+    active_backend = backend_by_name(backend_name)
+    active_board = board_by_name(active_backend, name)
 
     page = ''
     page += '''
@@ -155,9 +174,12 @@ def route_board(name=None):
     <head>
     '''
     if active_board:
-        page += f'<title>/{active_board.name}/ - {active_board.title} - cyberland</title>'
+        page += f'<title>/{active_board.name}/ - {active_board.title} ({active_backend.title})</title>'
+    elif active_backend:
+        page += f'<title>{active_backend.title}</title>'
     else:
         page += f'<title>cyberland</title>'
+
     page += '''
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
@@ -174,7 +196,7 @@ def route_board(name=None):
     a {
         color: lime!important;
     }
-    .menu a:hover, .menu a.active {
+    a:hover, a.active {
         color: black!important;
         background: lime!important;
     }
@@ -218,51 +240,79 @@ def route_board(name=None):
     </head>
     <body>
     '''
-    menu = []
-    for board in boards:
-        if board == active_board:
-            menu.append(f'<a class="active" href="/{board.name}">/{board.name}/ - {board.title}</a></b>')
+    backend_menu = []
+    for backend in backends:
+        if backend == active_backend:
+            backend_menu.append(f'<a class="active" href="/{backend.name}/">{backend.title}</a></b>')
         else:
-            menu.append(f'<a href="/{board.name}">/{board.name}/ - {board.title}</a>')
+            backend_menu.append(f'<a href="/{backend.name}/">{backend.title}</a>')
     page += '<div class="menu">'
-    page += ' | '.join(menu)
+    page += 'backends: '
+    page += '[' + '] ['.join(backend_menu) + ']'
     page += '</div>'
+    if active_backend:
+        board_menu = []
+        for board in active_backend.boards:
+            if board == active_board:
+                board_menu.append(f'<a class="active" href="/{active_backend.name}/{board.name}/">/{board.name}/ - {board.title}</a></b>')
+            else:
+                board_menu.append(f'<a href="/{active_backend.name}/{board.name}/">/{board.name}/ - {board.title}</a>')
+        page += '<div class="menu">'
+        page += 'boards: '
+        page += '[' + '] ['.join(board_menu) + ']'
+        page += '</div>'
+    
+    page += '<br>'
+    
+    if not active_backend:
+        page += '<h1>select backend</h1>'
+    if active_backend and not active_board:
+        page += '<h1>select board</h1>'
 
-    if not active_board:
+    for message in get_flashed_messages():
+        page += f'<div><h3>{message}</h3><br>'
+
+    if not active_board or not active_backend:
         return page
 
-    page += f'<h1>/{active_board.name}/ - {active_board.title}</h1>'
+    page += f'<h2>/{active_board.name}/ - {active_board.title} @ {active_backend.title}</h2>'
+
+    try:
+        posts = get_posts_cacheable(active_backend, name)
+    except BackendError as error:
+        posts = []
+        page += f'<h2>backend failed ({error.response.status_code})</h2>'
+        page += '<div style="border: 1px solid lime; padding: 10px">'
+        page += error.response.text
+        page += '</div>'
+        return page
 
     page += f'''
-    <form method="post" action="{name}/post">
+    <form method="post" action="/{active_backend.name}/{active_board.name}/post">
     <textarea name="content"></textarea><br>
     <input type="submit">
     </form>
     <br>
     '''
 
-    try:
-        posts = get_posts_cacheable(name)
-    except BackendError as error:
-        posts = []
-        page += f'<h2>shit\'s fucked, backend failed with status code {error.response.status_code}</h2>'
-        page += '<div style="border: 1px solid lime;">'
-        page += error.response.text
-        page += '</div>'
+    page += '<a id="updatePosts" href="javascript:updatePosts()">[Update posts]</a><br><br>'
+    page += '<div id="posts">'
 
     def render_collapse(posts):
         nonlocal page
         prev_post = None
         same_posts = 0
         for post in posts:
-            if prev_post and prev_post['content'] == post['content']:
+            if prev_post and prev_post['content'] == post['content'] and not post['replies']:
                 same_posts += 1
                 continue
-            if same_posts > 1:
+            if same_posts > 0:
                 page += f'<div class="post" style="color:green">({same_posts}x repeating)</div>'
             render_post(post)
             prev_post = post
             same_posts = 0
+        if same_posts > 0:
+            page += f'<div class="post" style="color:green">({same_posts}x repeating)</div>'
     
     def render_post(post):
         nonlocal page
@@ -281,19 +331,35 @@ def route_board(name=None):
         page += '</div>'
     
  
-    
     render_collapse(posts)
+
+    page += "</div>"
         
 
     page += r'''
     <script type="text/javascript">
     function quote(id) {
-        let textarea = document.querySelector('textarea');
+        let textarea = document.querySelector("textarea");
         let lines = textarea.value.split("\n");
         if (lines[0].match(/>>\d+/))
             lines.shift();
         lines.unshift(">>" + id);
         textarea.value = lines.join("\n");
+    }
+
+    async function updatePosts() {
+        let button = document.getElementById('updatePosts');
+        button.innerHTML = '...';
+        let req = await fetch('http://localhost:5000/cl2/o');
+        let text = await req.text();
+        let div = document.createElement('div');
+        div.innerHTML = text;
+        let posts = div.querySelector('\#posts');
+        if (posts) {
+            let oldPosts = document.querySelector('\#posts');
+            oldPosts.parentNode.replaceChild(posts, oldPosts);
+        }
+        button.innerHTML = '[Update posts]';
     }
     </script>
     '''
@@ -301,9 +367,13 @@ def route_board(name=None):
     page += '</html>'
     return page
 
-@app.route('/<name>/post', methods=['POST'])
-def route_post(name):
-    board = board_by_name(name)
+@app.route('/<backend_name>/<board_name>/post', methods=['POST'])
+def route_post(backend_name, board_name):
+    backend = backend_by_name(backend_name)
+    if not backend:
+        print('no backend')
+        return redirect('/')
+    board = board_by_name(backend, board_name)
     if not board:
         print('no board')
         return redirect('/')
@@ -318,11 +388,16 @@ def route_post(name):
         reply_to = m.group(1)
         content = lines[1]
     data = { 'content': content, 'replyTo': reply_to }
-    r = requests.post(f'https://cyberland2.club/{name}/', data=data)
+    r = requests.post(f'{backend.url}/{board.name}/', data=data)
+    if r.status_code != 200:
+        flash(f'posting failed? ({r.status_code})')
+    else:
+        flash(f'posting ok ({r.status_code})')
     with cache_lock:
-        if name in cache:
-            del cache[name]
-    return redirect(f'/{name}')
+        key = backend.name + ':' + board.name
+        if key in cache:
+            del cache[key]
+    return redirect(f'/{backend.name}/{board.name}')
 
 if __name__ == '__main__':
     app.run(debug=True)
