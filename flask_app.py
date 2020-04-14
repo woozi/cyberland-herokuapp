@@ -5,7 +5,7 @@ from collections import namedtuple
 import concurrent.futures
 import threading
 import time
-import pdb
+from ansi import ansi_8bit_colors
 
 class BackendError(Exception):
     def __init__(self, response):
@@ -93,6 +93,53 @@ def get_posts_for_board(board_name):
 
     return posts
 
+
+
+def convert_ansi_to_html(content):
+    new_content = ''
+    i = 0
+    closing_stack = []
+    while i < len(content):
+        if content[i:i + 2] == '\033[':
+            i += 2
+            s = content[i:i + 20]
+            if s.startswith('0m'):
+                new_content += ''.join(closing_stack)
+                closing_stack = []
+                i += 2
+                continue
+            m = re.match(r'(\d+);(\d+);(\d+);(\d+);(\d+)m', s)
+            if m: # 24bit
+                if m.group(1) == '38' and m.group(2) == '2':
+                    new_content += f'<span style="color:rgb({m.group(3)},{m.group(4)},{m.group(5)}">'
+                    closing_stack.append('</span>')
+                elif m.group(1) == '48' and m.group(2) == '2':
+                    new_content += f'<span style="background:rgb({m.group(3)},{m.group(4)},{m.group(5)}">'
+                    closing_stack.append('</span>')
+                i += len(m.group(0))
+            else:
+                m = re.match(r'(\d+);(\d+);(\d+)m', s)
+                if m: # bit
+                    if m.group(1) == '38' and m.group(2) == '5':
+                        color = ansi_8bit_colors.get(m.group(3))
+                        if color:
+                            new_content += f'<span style="color:{color}">'
+                            closing_stack.append('</span>')
+                            i += len(m.group(0))
+                    elif m.group(1) == '48' and m.group(2) == '5':
+                        color = ansi_8bit_colors.get(m.group(3))
+                        if color:
+                            new_content += f'<span style="background:{color}">'
+                            closing_stack.append('</span>')
+                            i += len(m.group(0))
+
+        else:
+            new_content += content[i]
+            i += 1
+    new_content += ''.join(closing_stack)
+    return new_content
+
+
 def get_posts_for_board_simple(backend, board_name):
     flat_posts = get_all_posts(backend.url, board_name)
     posts = []
@@ -102,6 +149,12 @@ def get_posts_for_board_simple(backend, board_name):
         post['replyTo'] = int(post['replyTo']) if post['replyTo'] else 0
         post['replies'] = []
         posts_lookup[post['id']] = post
+        content = post['content']
+        content = str(escape(content))
+        content = convert_ansi_to_html(content)
+        content = make_urls_clickable(content)
+        content = content.replace('\r\n', '\n').replace('\n', '<br>')
+        post['content'] = content
 
     for post in flat_posts:
         if post['replyTo'] == 0:
@@ -319,10 +372,7 @@ def route_board(backend_name=None, name=None):
         page += '<div class="post">'
         page += '<div class="content">'
         page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a> <i>{post["time"]}</i><br>'
-        content = str(escape(post['content']))
-        content = make_urls_clickable(content)
-        content = content.replace('\r\n', '\n').replace('\n', '<br>')
-        page += content
+        page += post['content']
         page += '</div>'
         page += '<div class="replies">'
         if 'replies' in post:
