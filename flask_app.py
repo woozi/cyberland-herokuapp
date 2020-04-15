@@ -400,7 +400,7 @@ def route_board(backend_name=None, name=None):
     async function updatePosts() {
         let button = document.getElementById('updatePosts');
         button.innerHTML = '...';
-        let req = await fetch('http://localhost:5000/cl2/o');
+        let req = await fetch(window.location.href);
         let text = await req.text();
         let div = document.createElement('div');
         div.innerHTML = text;
