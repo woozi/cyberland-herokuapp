@@ -6,6 +6,7 @@ import concurrent.futures
 import threading
 import time
 from ansi import ansi_8bit_colors
+from PIL import Image
 
 class BackendError(Exception):
     def __init__(self, response):
@@ -372,7 +373,10 @@ def route_board(backend_name=None, name=None):
         page += '<div class="post">'
         page += '<div class="content">'
         page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a> <i>{post["time"]}</i><br>'
-        page += post['content']
+        if len(post['content'].split('<br>')) > 100:
+            page += f'<div class="post" style="color:green">(post hidden, over 100 lines)</div>'
+        else:    
+            page += post['content']
         page += '</div>'
         page += '<div class="replies">'
         if 'replies' in post:
@@ -431,12 +435,33 @@ def route_post(backend_name, board_name):
     if not content:
         print('no content')
         return redirect(f'/{name}')
+
     lines = content.split('\n', 1)
     m = re.match('>>(\d+)', lines[0])
     reply_to = '0'
     if m:
         reply_to = m.group(1)
         content = lines[1]
+
+    def redirect_to_board():
+        return redirect(f'/{backend.name}/{board.name}')
+
+    # image upload
+    if 'file' in request.files:
+        end = '\033['
+        char_limit = 3500 - 2 - len(content)
+        one_pixel = 20
+
+        file = request.files['file']
+        _, ext = file.filename.rsplit('.', 1)
+        if 'ext' not in ['jpg', 'png']:
+            flash('supported file types are .jpg, .png')
+            return redirect_to_board()
+        img = Image.open(file.stream)
+
+        
+        
+
     data = { 'content': content, 'replyTo': reply_to }
     r = requests.post(f'{backend.url}/{board.name}/', data=data)
     if r.status_code != 200:
@@ -447,7 +472,8 @@ def route_post(backend_name, board_name):
         key = backend.name + ':' + board.name
         if key in cache:
             del cache[key]
-    return redirect(f'/{backend.name}/{board.name}')
+
+    return redirect_to_board()
 
 if __name__ == '__main__':
     app.run(debug=True)
