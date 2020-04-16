@@ -203,7 +203,7 @@ class Board(object):
 
 backends = [
     Backend('cl2', 'https://cyberland2.club', 'cyberland2.club', 
-        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=100000)]),
+        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=80000)]),
     Backend('lc', 'http://landcyber.herokuapp.com', 'landcyber.herokuapp.com', 
         [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=50000)]),
     Backend('cldig', 'https://cyberland.digital', 'cyberland.digital', 
