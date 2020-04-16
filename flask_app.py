@@ -148,7 +148,10 @@ def get_posts_for_board_simple(backend, board_name):
     posts_lookup = { }
     for post in flat_posts:
         post['id'] = int(post['id'])
-        post['replyTo'] = int(post['replyTo']) if post['replyTo'] else 0
+        try:
+            post['replyTo'] = int(post['replyTo'])
+        except:
+            post['replyTo'] = 0
         post['replies'] = []
         posts_lookup[post['id']] = post
         content = post['content']
