@@ -483,7 +483,6 @@ def route_post(backend_name, board_name):
     def redirect_to_board():
         return redirect(f'/{backend.name}/{board.name}')
 
-    print(request.files)
     file = request.files.get('file', None)
     content = request.form.get('content', None)
     if not content and not file:

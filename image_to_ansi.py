@@ -22,7 +22,7 @@ def convert_to_ansi(img):
 
 def image_to_ansi(img, char_limit):
     img = img.convert('RGB')
-    top_scale = 1
+    top_scale = 0.65
     bottom_scale = 0
     best_scale = None
     prev_scale = None
