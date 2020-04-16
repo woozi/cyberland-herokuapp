@@ -7,6 +7,7 @@ import threading
 import time
 from ansi import ansi_8bit_colors
 from PIL import Image
+from image_to_ansi import image_to_ansi
 
 class BackendError(Exception):
     def __init__(self, response):
@@ -154,7 +155,7 @@ def get_posts_for_board_simple(backend, board_name):
         content = str(escape(content))
         content = convert_ansi_to_html(content)
         content = make_urls_clickable(content)
-        content = content.replace('\r\n', '\n').replace('\n', '<br>')
+        # content = content.replace('\r\n', '\n').replace('\n', '<br>')
         post['content'] = content
 
     for post in flat_posts:
@@ -185,13 +186,28 @@ def get_posts_cacheable(backend, board_name):
             cache[key] = CacheEntry(posts=posts, time=time.time())
         return cache[key].posts
 
-Board = namedtuple('Board', ['name', 'title'])
-Backend = namedtuple('Backend', ['name', 'url', 'title', 'boards'])
+class Backend(object):
+    def __init__(self, name, url, title, boards):
+        self.name = name
+        self.url = url
+        self.title = title
+        self.boards = boards
+
+class Board(object):
+    def __init__(self, name, title, images=False, char_limit=80000):
+        self.name = name
+        self.title = title
+        self.images = images
+        self.char_limit = char_limit
+
 
 backends = [
-    Backend('cl2', 'https://cyberland2.club', 'cyberland2.club', [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image')]),
-    Backend('lc', 'http://landcyber.herokuapp.com', 'landcyber.herokuapp.com', [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image')]),
-    Backend('cldig', 'https://cyberland.digital', 'cyberland.digital', [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image'), Board('c', 'client tests')]),
+    Backend('cl2', 'https://cyberland2.club', 'cyberland2.club', 
+        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=100000)]),
+    Backend('lc', 'http://landcyber.herokuapp.com', 'landcyber.herokuapp.com', 
+        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=50000)]),
+    Backend('cldig', 'https://cyberland.digital', 'cyberland.digital', 
+        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True), Board('c', 'client tests')]),
 ]
 
 def board_by_name(backend, name):
@@ -274,7 +290,25 @@ def route_board(backend_name=None, name=None):
         cursor: pointer;
         color: black;
         background: lime;
-        border: 1px solid black;
+    }
+    input[type=file] {
+        background: black;
+        font-family: monospace;
+        color: lime;
+        padding: 10px;
+    }
+    input[type=file]::-webkit-file-upload-button {
+        background: black;
+        font-family: monospace;
+        color: lime;
+        border: 1px solid lime;
+        padding: 5px;
+        margin-right: 10px;
+    }
+    input[type=file]::-webkit-file-upload-button:hover {
+        color: black;
+        background: lime;
+        cursor: pointer;
     }
     .post {
 
@@ -341,13 +375,24 @@ def route_board(backend_name=None, name=None):
         page += '</div>'
         return page
 
-    page += f'''
-    <form method="post" action="/{active_backend.name}/{active_board.name}/post">
-    <textarea name="content"></textarea><br>
-    <input type="submit">
-    </form>
-    <br>
-    '''
+    if active_board.images:
+        page += f'''
+        <form method="post" enctype="multipart/form-data" action="/{active_backend.name}/{active_board.name}/post">
+        <textarea name="content"></textarea><br>
+        <label for="file">Attach image: </label><input id="file" type="file" name="file" accept="image/png, image/jpeg"><br>
+        <input type="submit">
+        </form>
+        <br>
+        '''
+    else:
+        page += f'''
+        <form method="post" action="/{active_backend.name}/{active_board.name}/post">
+        <textarea name="content"></textarea><br>
+        <input type="submit">
+        </form>
+        <br>
+        '''
+
 
     page += '<a id="updatePosts" href="javascript:updatePosts()">[Update posts]</a><br><br>'
     page += '<div id="posts">'
@@ -371,13 +416,13 @@ def route_board(backend_name=None, name=None):
     def render_post(post):
         nonlocal page
         page += '<div class="post">'
-        page += '<div class="content">'
+        page += '<pre class="content">'
         page += f'<a href="javascript:quote({post["id"]})" id="p{post["id"]}">#{post["id"]}</a> <i>{post["time"]}</i><br>'
         if len(post['content'].split('<br>')) > 100:
             page += f'<div class="post" style="color:green">(post hidden, over 100 lines)</div>'
         else:    
             page += post['content']
-        page += '</div>'
+        page += '</pre>'
         page += '<div class="replies">'
         if 'replies' in post:
             render_collapse(post['replies'])
@@ -431,10 +476,16 @@ def route_post(backend_name, board_name):
     if not board:
         print('no board')
         return redirect('/')
+
+    def redirect_to_board():
+        return redirect(f'/{backend.name}/{board.name}')
+
+    print(request.files)
+    file = request.files.get('file', None)
     content = request.form.get('content', None)
-    if not content:
+    if not content and not file:
         print('no content')
-        return redirect(f'/{name}')
+        return redirect_to_board()
 
     lines = content.split('\n', 1)
     m = re.match('>>(\d+)', lines[0])
@@ -443,23 +494,18 @@ def route_post(backend_name, board_name):
         reply_to = m.group(1)
         content = lines[1]
 
-    def redirect_to_board():
-        return redirect(f'/{backend.name}/{board.name}')
-
     # image upload
-    if 'file' in request.files:
-        end = '\033['
-        char_limit = 3500 - 2 - len(content)
-        one_pixel = 20
+    if file:
+        if not board.images:
+            return redirect_to_board()
 
-        file = request.files['file']
         _, ext = file.filename.rsplit('.', 1)
-        if 'ext' not in ['jpg', 'png']:
+        if ext not in ['jpg', 'png']:
             flash('supported file types are .jpg, .png')
             return redirect_to_board()
         img = Image.open(file.stream)
-
-        
+        ansi = image_to_ansi(img, board.char_limit)
+        content = ansi + content
         
 
     data = { 'content': content, 'replyTo': reply_to }
