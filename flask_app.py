@@ -29,6 +29,18 @@ def get_all_posts(backend_url, board_name, recent_first=True):
         raise BackendError(r)
     return posts
 
+
+def max_id(post):
+    if post['replies']:
+        return max(
+            max_id(reply) for reply in post['replies']
+        )
+    return int(post['id'])
+
+"""
+
+the old way of doing things, currently unused but want to keep it just in case
+
 def get_posts(board_name, thread_id="0", recent_first=True):
     print("get_posts", thread_id)
     r = requests.get(f'{API_BACKEND}/{board_name}/?thread={thread_id}&num=999999999999999')
@@ -40,13 +52,6 @@ def get_posts(board_name, thread_id="0", recent_first=True):
 
     return posts
 
-def max_id(post):
-    if post['replies']:
-        return max(
-            max_id(reply) for reply in post['replies']
-        )
-    return int(post['id'])
-
 def sort_replies(posts):
     for post in posts:
         post['replies'] = sorted(post['replies'], key=lambda x: int(x['id']))
@@ -54,12 +59,6 @@ def sort_replies(posts):
 
 def sort_ops_by_bump(posts):
     return sorted(posts, key=lambda p: max_id(p), reverse=True)
-
-def sort_posts(posts):
-    for post in posts:
-        post['replies'] = sort_posts(post['replies'])
-    posts = sorted(posts, key=lambda x: max_id(x), reverse=True)
-    return posts
 
 def get_posts_for_board(board_name):
     posts = get_posts(board_name)
@@ -94,8 +93,14 @@ def get_posts_for_board(board_name):
     sort_replies(posts)
 
     return posts
+"""
 
 
+def sort_posts(posts):
+    for post in posts:
+        post['replies'] = sort_posts(post['replies'])
+    posts = sorted(posts, key=lambda x: max_id(x), reverse=True)
+    return posts
 
 def convert_ansi_to_html(content):
     new_content = []
