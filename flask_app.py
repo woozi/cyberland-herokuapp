@@ -202,16 +202,17 @@ class Backend(object):
         self.boards = boards
 
 class Board(object):
-    def __init__(self, name, title, images=False, char_limit=80000):
+    def __init__(self, name, title, images=False, char_limit=80000, hidden=False):
         self.name = name
         self.title = title
         self.images = images
         self.char_limit = char_limit
+        self.hidden = hidden
 
 
 backends = [
     Backend('cl2', 'https://cyberland2.club', 'cyberland2.club', 
-        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=80000), Board('s', 'shared')]),
+        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=80000), Board('s', 'shared', hidden=True)]),
     Backend('lc', 'http://landcyber.herokuapp.com', 'landcyber.herokuapp.com', 
         [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=50000)]),
     Backend('cldig', 'https://cyberland.digital', 'cyberland.digital', 
@@ -361,7 +362,7 @@ def route_board(backend_name=None, name=None):
         for board in active_backend.boards:
             if board == active_board:
                 board_menu.append(f'<a class="active" href="/{active_backend.name}/{board.name}/">/{board.name}/ - {board.title}</a></b>')
-            else:
+            elif not board.hidden:
                 board_menu.append(f'<a href="/{active_backend.name}/{board.name}/">/{board.name}/ - {board.title}</a>')
         page += '<div class="menu">'
         page += 'boards: '
