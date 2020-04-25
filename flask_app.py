@@ -1,6 +1,6 @@
 import requests
 import re
-from flask import Flask, escape, request, redirect, get_flashed_messages, flash
+from flask import Flask, escape, request, redirect, get_flashed_messages, flash, make_response
 from collections import namedtuple
 import concurrent.futures
 import threading
@@ -211,7 +211,7 @@ class Board(object):
 
 backends = [
     Backend('cl2', 'https://cyberland2.club', 'cyberland2.club', 
-        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=80000)]),
+        [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=80000), Board('s', 'shared')]),
     Backend('lc', 'http://landcyber.herokuapp.com', 'landcyber.herokuapp.com', 
         [Board('t', 'technology'), Board('n', 'news'), Board('o', 'off-topic'), Board('i', 'image', images=True, char_limit=50000)]),
     Backend('cldig', 'https://cyberland.digital', 'cyberland.digital', 
@@ -245,6 +245,16 @@ app.secret_key = b'_5#y2L"Ffghgfhgf4Q8z\n\xec]/'
 def route_board(backend_name=None, name=None):
     active_backend = backend_by_name(backend_name)
     active_board = board_by_name(active_backend, name)
+
+    cookies = []
+    def respond_with_page():
+        resp = make_response(page)
+        for cookie in cookies:
+            resp.set_cookie(cookie[0], cookie[1])
+        return resp
+
+    if request.args.get('dismissMotd') == '1':
+        cookies.append(('motdDismissed', str(time.time())))
 
     page = ''
     page += '''
@@ -359,6 +369,29 @@ def route_board(backend_name=None, name=None):
         page += '</div>'
     
     page += '<br>'
+
+    if "motdDismissed" not in request.cookies and request.args.get('dismissMotd') != '1':
+        page += '''
+<pre style="border: 1px dotted lime; padding: 10px; color: lime">
+A NOTE FROM THE DEVS
+
+Sailboat-Anon, Cyberland.digital, hostanon and heroku-app anon are all working together to give you all some dope features in the next few days/weeks.  Together we represent cyberland2.club, api.cyberland2.club, cyberland.digital and cyberland.herokuapp.com.
+
+The Cyberland.Digital guys are continuing to work on their server -- they have a new release coming soon.  https://github.com/cyberland-digital/cyberland/tree/feature/validation
+
+I (SailboatAnon) have been working on api.cyberland2.club, an API that allows other cyberland instances to 'phone home' and become part of the network.  Being part of the network gives you access to /s/, a shared board that all cyberland servers can post to using the API, as well as a bunch of other cool federated features.
+https://github.com/sailboat-anon/api
+
+In parallel, I'm doing small updates to my cyberland server to support the new changes to the API service:
+https://github.com/sailboat-anon/sailboatland
+
+And we're all following this protocol to ensure everything integrates:
+https://github.com/cyberland-digital/cyberland-protocol/blob/master/protocol.md
+
+[<a href="?dismissMotd=1">Dismiss and do not show again</a>]
+</pre>
+
+'''
     
     if not active_backend:
         page += '<h1>select backend</h1>'
@@ -369,7 +402,7 @@ def route_board(backend_name=None, name=None):
         page += f'<div><h3>{message}</h3><br>'
 
     if not active_board or not active_backend:
-        return page
+        return respond_with_page()
 
     page += f'<h2>/{active_board.name}/ - {active_board.title} @ {active_backend.title}</h2>'
 
@@ -381,7 +414,8 @@ def route_board(backend_name=None, name=None):
         page += '<div style="border: 1px solid lime; padding: 10px">'
         page += error.response.text
         page += '</div>'
-        return page
+        return respond_with_page()
+
 
     if active_board.images:
         page += f'''
@@ -472,7 +506,7 @@ def route_board(backend_name=None, name=None):
     '''
     page += '</body>'
     page += '</html>'
-    return page
+    return respond_with_page()
 
 @app.route('/<backend_name>/<board_name>/post', methods=['POST'])
 def route_post(backend_name, board_name):
@@ -516,7 +550,13 @@ def route_post(backend_name, board_name):
         
 
     data = { 'content': content, 'replyTo': reply_to }
-    r = requests.post(f'{backend.url}/{board.name}/', data=data)
+
+    if 'X-Forwarded-For' in request.headers:
+        client_ip = request.headers['X-Forwarded-For'].split(',')[-1].strip()
+    else:
+        client_ip = request.remote_addr
+
+    r = requests.post(f'{backend.url}/{board.name}/', data=data, headers={'X-Forwarded-For': client_ip})
     if r.status_code != 200:
         flash(f'posting failed? ({r.status_code})')
     else:
